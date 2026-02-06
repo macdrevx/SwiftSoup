@@ -527,6 +527,22 @@ import Foundation
             let value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
             if !value.isEmpty {
                 clonedAttr.setValue(value: value)
+            } else {
+                // If absUrl didn't produce a value, trim the original value if it has whitespace
+                let originalValue = attr.getValueUTF8()
+                let trimmedValue = ByteSlice.fromArray(originalValue).trim()
+                // Only update if trimming actually removed whitespace
+                if trimmedValue.count != originalValue.count {
+                    clonedAttr.setValue(value: trimmedValue.toArray())
+                }
+            }
+        } else {
+            // Even when preserving relative links, trim whitespace from the value
+            let originalValue = attr.getValueUTF8()
+            let trimmedValue = ByteSlice.fromArray(originalValue).trim()
+            // Only update if trimming actually removed whitespace
+            if trimmedValue.count != originalValue.count {
+                clonedAttr.setValue(value: trimmedValue.toArray())
             }
         }
         return clonedAttr
@@ -540,11 +556,14 @@ import Foundation
             value = attr.getValueUTF8()
         }// if it could not be made abs, run as-is to allow custom unknown protocols
 
+        // Trim leading and trailing whitespace from the value
+        let trimmedValue = ByteSlice.fromArray(value).trim().toArray()
+
         for ptl in protocols {
             var prot: String = ptl.toString()
 
             if prot == "#" { // allows anchor links
-                if isValidAnchor(value) {
+                if isValidAnchor(trimmedValue) {
                     return true
                 } else {
                     continue
@@ -553,7 +572,7 @@ import Foundation
 
             prot += ":"
 
-            if value.lowercased().hasPrefix(prot.utf8Array) {
+            if trimmedValue.lowercased().hasPrefix(prot.utf8Array) {
                 return true
             }
 

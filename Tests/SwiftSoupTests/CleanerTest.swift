@@ -293,4 +293,44 @@ class CleanerTest: XCTestCase {
         XCTAssertEqual(originalLink, cleanedLinkSecond)
     }
 
+    func testHandlesWhitespaceInURLs() throws {
+        // Test that URLs with leading/trailing whitespace are properly handled
+        let htmlWithWhitespace = """
+        <a href=" http://example.com ">Link with spaces</a>
+        <img src="  https://example.com/image.jpg  " />
+        <a href="  mailto:test@example.com  ">Email with spaces</a>
+        """
+        
+        let whitelist = try Whitelist.basicWithImages()
+            .addProtocols("a", "href", "mailto")
+        
+        let clean = try SwiftSoup.clean(htmlWithWhitespace, whitelist)
+        XCTAssertNotNil(clean)
+        
+        // URLs should be cleaned (whitespace trimmed) and preserved
+        XCTAssertTrue(clean!.contains("http://example.com"))
+        XCTAssertTrue(clean!.contains("https://example.com/image.jpg"))
+        XCTAssertTrue(clean!.contains("mailto:test@example.com"))
+        
+        // Parse the cleaned HTML to verify attributes
+        let cleanedDoc = try SwiftSoup.parse(clean!)
+        let links = try cleanedDoc.select("a")
+        
+        // First link should have http URL without spaces
+        let firstLink = try links.get(0)
+        let firstHref = try firstLink.attr("href")
+        XCTAssertEqual("http://example.com", firstHref)
+        
+        // Second link should have mailto URL without spaces
+        let secondLink = try links.get(1)
+        let secondHref = try secondLink.attr("href")
+        XCTAssertEqual("mailto:test@example.com", secondHref)
+        
+        // Image should have https URL without spaces
+        let images = try cleanedDoc.select("img")
+        let img = try images.first()
+        let imgSrc = try img?.attr("src")
+        XCTAssertEqual("https://example.com/image.jpg", imgSrc)
+    }
+
 }
