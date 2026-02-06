@@ -523,21 +523,18 @@ import Foundation
         }
         
         let clonedAttr = attr.clone()
+        var valueWasSet = false
+        
         if !preserveRelativeLinks {
             let value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
             if !value.isEmpty {
                 clonedAttr.setValue(value: value)
-            } else {
-                // If absUrl didn't produce a value, trim the original value if it has whitespace
-                let originalValue = attr.getValueUTF8()
-                let trimmedValue = ByteSlice.fromArray(originalValue).trim()
-                // Only update if trimming actually removed whitespace
-                if trimmedValue.count != originalValue.count {
-                    clonedAttr.setValue(value: trimmedValue.toArray())
-                }
+                valueWasSet = true
             }
-        } else {
-            // Even when preserving relative links, trim whitespace from the value
+        }
+        
+        // If we haven't set an absolute URL, trim whitespace from the original value
+        if !valueWasSet {
             let originalValue = attr.getValueUTF8()
             let trimmedValue = ByteSlice.fromArray(originalValue).trim()
             // Only update if trimming actually removed whitespace
@@ -545,6 +542,7 @@ import Foundation
                 clonedAttr.setValue(value: trimmedValue.toArray())
             }
         }
+        
         return clonedAttr
     }
 
