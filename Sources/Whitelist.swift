@@ -524,21 +524,20 @@ import Foundation
         
         let clonedAttr = attr.clone()
         
-        // Always trim whitespace from the original value first
-        let originalValue = attr.getValueUTF8()
-        let trimmedValue = trimURLValue(originalValue)
-        
         // Try to set absolute URL if not preserving relative links
         if !preserveRelativeLinks {
             let value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
             if !value.isEmpty {
+                // absUrl successfully resolved to an absolute URL, which is already properly formatted
                 clonedAttr.setValue(value: value)
                 return clonedAttr
             }
         }
         
-        // Use the trimmed value if it's different from the original
-        if trimmedValue.count != originalValue.count {
+        // If we didn't set an absolute URL, trim whitespace from the original value
+        let originalValue = attr.getValueUTF8()
+        let trimmedValue = trimURLValue(originalValue)
+        if trimmedValue != originalValue {
             clonedAttr.setValue(value: trimmedValue)
         }
         
