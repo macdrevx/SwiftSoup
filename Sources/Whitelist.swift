@@ -48,11 +48,37 @@ import Foundation
  http://ha.ckers.org/xss.html for some XSS attack examples.
  */
  public class Whitelist {
+
+    /// Controls how whitespace in URL attributes is handled during sanitization.
+    public enum URLWhitespaceMode {
+        /// No trimming; URL attributes with leading/trailing whitespace will have those attributes removed. This is the default.
+        case strict
+        /// Trim whitespace for both validation and output.
+        case trim
+        /// Trim whitespace for validation, but preserve original whitespace in output.
+        case allow
+
+        func prepareForValidation(_ value: [UInt8]) -> [UInt8] {
+            switch self {
+            case .strict: value
+            case .trim, .allow: value.trim()
+            }
+        }
+
+        func prepareForOutput(_ value: [UInt8]) -> [UInt8] {
+            switch self {
+            case .trim: value.trim()
+            case .strict, .allow: value
+            }
+        }
+    }
+
     private var tagNames: Set<TagName> // tags allowed, lower case. e.g. [p, br, span]
     private var attributes: Dictionary<TagName, Set<AttributeKey>> // tag -> attribute[]. allowed attributes [href] for a tag.
     private var enforcedAttributes: Dictionary<TagName, Dictionary<AttributeKey, AttributeValue>> // always set these attribute values
     private var protocols: Dictionary<TagName, Dictionary<AttributeKey, Set<Protocol>>> // allowed URL protocols for attributes
     private var preserveRelativeLinks: Bool  // option to preserve relative links
+    private var urlWhitespaceMode: URLWhitespaceMode
 
     /**
      This whitelist allows only text nodes: all HTML will be stripped.
@@ -166,6 +192,7 @@ import Foundation
         enforcedAttributes = Dictionary<TagName, Dictionary<AttributeKey, AttributeValue>>()
         protocols = Dictionary<TagName, Dictionary<AttributeKey, Set<Protocol>>>()
         preserveRelativeLinks = false
+        urlWhitespaceMode = .strict
     }
 
     /**
@@ -382,6 +409,22 @@ import Foundation
     }
 
     /**
+     Configure how whitespace in URL attributes is handled during sanitization.
+
+     - `.strict` (default): No trimming. URL attributes with leading/trailing whitespace will be removed.
+     - `.trim`: Trims whitespace for both protocol validation and output.
+     - `.allow`: Trims whitespace for protocol validation but preserves original whitespace in output.
+
+     - parameter mode: The whitespace handling mode
+     - returns: this Whitelist, for chaining.
+     */
+    @discardableResult
+    open func urlWhitespace(_ mode: URLWhitespaceMode) -> Whitelist {
+        urlWhitespaceMode = mode
+        return self
+    }
+
+    /**
      Add allowed URL protocols for an element's URL attribute. This restricts the possible values of the attribute to
      URLs with the defined protocol.
      
@@ -524,27 +567,51 @@ import Foundation
         
         let clonedAttr = attr.clone()
         if !preserveRelativeLinks {
-            let value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
-            if !value.isEmpty {
-                clonedAttr.setValue(value: value)
+            let resolved = resolveWithTrimmedURL(el, attr)
+            if !resolved.isEmpty {
+                clonedAttr.setValue(value: resolved)
+                return clonedAttr
             }
         }
+
+        // No resolution — apply whitespace mode to the original value
+        let originalValue = attr.getValueUTF8()
+        let outputValue = urlWhitespaceMode.prepareForOutput(originalValue)
+        if outputValue != originalValue {
+            clonedAttr.setValue(value: outputValue)
+        }
+
         return clonedAttr
+    }
+
+    /// Resolve a URL attribute, trimming whitespace before resolution when a base URI
+    /// is present to avoid percent-encoding of leading/trailing spaces. Without a base
+    /// URI, the raw value is passed through for Foundation normalization only.
+    private func resolveWithTrimmedURL(_ el: Element, _ attr: Attribute) -> [UInt8] {
+        let rawValue = attr.getValueUTF8()
+        let baseUri = el.getBaseUri()
+        // Only trim when there's a base URI to resolve against; without one,
+        // pass the raw value so whitespace still causes resolution failure.
+        let relUrl = baseUri.isEmpty
+            ? String(decoding: rawValue, as: UTF8.self)
+            : String(decoding: rawValue.trim(), as: UTF8.self)
+        let resolved = StringUtil.resolve(baseUri, relUrl: relUrl)
+        return resolved.utf8Array
     }
 
     private func testValidProtocol(_ el: Element, _ attr: Attribute, _ protocols: Set<Protocol>) throws -> Bool {
         // try to resolve relative urls to abs, and optionally update the attribute so output html has abs.
         // rels without a baseuri get removed
-        var value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
-        if value.isEmpty {
-            value = attr.getValueUTF8()
-        }// if it could not be made abs, run as-is to allow custom unknown protocols
+        var checkedValue = resolveWithTrimmedURL(el, attr)
+        if checkedValue.isEmpty {
+            checkedValue = urlWhitespaceMode.prepareForValidation(attr.getValueUTF8())
+        }
 
         for ptl in protocols {
             var prot: String = ptl.toString()
 
             if prot == "#" { // allows anchor links
-                if isValidAnchor(value) {
+                if isValidAnchor(checkedValue) {
                     return true
                 } else {
                     continue
@@ -553,7 +620,7 @@ import Foundation
 
             prot += ":"
 
-            if value.lowercased().hasPrefix(prot.utf8Array) {
+            if checkedValue.lowercased().hasPrefix(prot.utf8Array) {
                 return true
             }
 
