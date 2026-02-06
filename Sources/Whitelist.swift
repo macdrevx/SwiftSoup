@@ -523,31 +523,31 @@ import Foundation
         }
         
         let clonedAttr = attr.clone()
-        var absoluteUrlWasSet = false
         
+        // Always trim whitespace from the original value first
+        let originalValue = attr.getValueUTF8()
+        let trimmedValue = trimURLValue(originalValue)
+        
+        // Try to set absolute URL if not preserving relative links
         if !preserveRelativeLinks {
             let value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
             if !value.isEmpty {
                 clonedAttr.setValue(value: value)
-                absoluteUrlWasSet = true
+                return clonedAttr
             }
         }
         
-        // If we haven't set an absolute URL, trim whitespace from the original value
-        if !absoluteUrlWasSet {
-            trimAttributeValueWhitespace(attr: attr, clonedAttr: clonedAttr)
+        // Use the trimmed value if it's different from the original
+        if trimmedValue.count != originalValue.count {
+            clonedAttr.setValue(value: trimmedValue)
         }
         
         return clonedAttr
     }
     
-    private func trimAttributeValueWhitespace(attr: Attribute, clonedAttr: Attribute) {
-        let originalValue = attr.getValueUTF8()
-        let trimmedValue = ByteSlice.fromArray(originalValue).trim()
-        // Only update if trimming actually removed whitespace
-        if trimmedValue.count != originalValue.count {
-            clonedAttr.setValue(value: trimmedValue.toArray())
-        }
+    /// Trims leading and trailing whitespace from a URL value
+    private func trimURLValue(_ value: [UInt8]) -> [UInt8] {
+        return ByteSlice.fromArray(value).trim().toArray()
     }
 
     private func testValidProtocol(_ el: Element, _ attr: Attribute, _ protocols: Set<Protocol>) throws -> Bool {
@@ -559,7 +559,7 @@ import Foundation
         }// if it could not be made abs, run as-is to allow custom unknown protocols
 
         // Trim leading and trailing whitespace from the value
-        let trimmedValue = ByteSlice.fromArray(value).trim().toArray()
+        let trimmedValue = trimURLValue(value)
 
         for ptl in protocols {
             var prot: String = ptl.toString()
