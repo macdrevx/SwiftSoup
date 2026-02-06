@@ -523,27 +523,31 @@ import Foundation
         }
         
         let clonedAttr = attr.clone()
-        var valueWasSet = false
+        var absoluteUrlWasSet = false
         
         if !preserveRelativeLinks {
             let value: [UInt8] = try el.absUrl(attr.getKeyUTF8())
             if !value.isEmpty {
                 clonedAttr.setValue(value: value)
-                valueWasSet = true
+                absoluteUrlWasSet = true
             }
         }
         
         // If we haven't set an absolute URL, trim whitespace from the original value
-        if !valueWasSet {
-            let originalValue = attr.getValueUTF8()
-            let trimmedValue = ByteSlice.fromArray(originalValue).trim()
-            // Only update if trimming actually removed whitespace
-            if trimmedValue.count != originalValue.count {
-                clonedAttr.setValue(value: trimmedValue.toArray())
-            }
+        if !absoluteUrlWasSet {
+            trimAttributeValueWhitespace(attr: attr, clonedAttr: clonedAttr)
         }
         
         return clonedAttr
+    }
+    
+    private func trimAttributeValueWhitespace(attr: Attribute, clonedAttr: Attribute) {
+        let originalValue = attr.getValueUTF8()
+        let trimmedValue = ByteSlice.fromArray(originalValue).trim()
+        // Only update if trimming actually removed whitespace
+        if trimmedValue.count != originalValue.count {
+            clonedAttr.setValue(value: trimmedValue.toArray())
+        }
     }
 
     private func testValidProtocol(_ el: Element, _ attr: Attribute, _ protocols: Set<Protocol>) throws -> Bool {
