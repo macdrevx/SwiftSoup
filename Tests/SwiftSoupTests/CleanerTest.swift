@@ -293,4 +293,201 @@ class CleanerTest: XCTestCase {
         XCTAssertEqual(originalLink, cleanedLinkSecond)
     }
 
+    // MARK: - URL whitespace mode helpers
+
+    private func assertURLWhitespaceModeBehavior(
+        for mode: Whitelist.URLWhitespaceMode,
+        baseURI: String = "",
+        original: String,
+        expected: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let whitelist = try Whitelist()
+            .addTags("a", "img")
+            .addAttributes("a", "href")
+            .addAttributes("img", "src")
+            .addProtocols("a", "href", "http", "https", "mailto")
+            .addProtocols("img", "src", "http", "https")
+            .urlWhitespace(mode)
+        let result = try SwiftSoup.clean(original, baseURI, whitelist)
+        XCTAssertEqual(expected, result, file: file, line: line)
+    }
+
+    // MARK: - Trim mode
+
+    func testTrimModeTrimsWhitespaceFromHttpURL() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<a href=" http://example.com ">Link</a>"#,
+            expected: #"<a href="http://example.com">Link</a>"#
+        )
+    }
+
+    func testTrimModeTrimsWhitespaceFromImgSrc() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<img src="  https://example.com/image.jpg  " />"#,
+            expected: #"<img src="https://example.com/image.jpg" />"#
+        )
+    }
+
+    func testTrimModeTrimsWhitespaceFromMailtoURL() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<a href="  mailto:test@example.com  ">Email</a>"#,
+            expected: #"<a href="mailto:test@example.com">Email</a>"#
+        )
+    }
+
+    func testTrimModeStripsWhitespaceOnlyHref() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<a href="   ">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
+    func testTrimModeTrimsTabsAndNewlines() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: "<a href=\"\thttp://example.com\n\">Link</a>",
+            expected: #"<a href="http://example.com">Link</a>"#
+        )
+    }
+
+    func testTrimModePreservesInternalWhitespace() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<a href=" http://example .com ">Link</a>"#,
+            expected: #"<a href="http://example .com">Link</a>"#
+        )
+    }
+
+    // MARK: - Strict mode
+
+    func testStrictModeRejectsWhitespaceURLs() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .strict,
+            original: #"<a href=" http://example.com ">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
+    func testStrictModeAllowsCleanURLs() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .strict,
+            original: #"<a href="http://example.com">Link</a>"#,
+            expected: #"<a href="http://example.com">Link</a>"#
+        )
+    }
+
+    // MARK: - Allow mode
+
+    func testAllowModePreservesWhitespaceInOutput() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .allow,
+            original: #"<a href=" http://example.com ">Link</a>"#,
+            expected: #"<a href=" http://example.com ">Link</a>"#
+        )
+    }
+
+    // MARK: - With base URI (whitespace trimmed before resolution regardless of mode)
+
+    func testBaseURIResolvesAbsoluteWhitespaceURLInStrictMode() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .strict,
+            baseURI: "http://example.com/",
+            original: #"<a href=" http://other.com/page ">Link</a>"#,
+            expected: #"<a href="http://other.com/page">Link</a>"#
+        )
+    }
+
+    func testBaseURIResolvesAbsoluteWhitespaceURLInTrimMode() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            baseURI: "http://example.com/",
+            original: #"<a href=" http://other.com/page ">Link</a>"#,
+            expected: #"<a href="http://other.com/page">Link</a>"#
+        )
+    }
+
+    func testBaseURIResolvesAbsoluteWhitespaceURLInAllowMode() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .allow,
+            baseURI: "http://example.com/",
+            original: #"<a href=" http://other.com/page ">Link</a>"#,
+            expected: #"<a href="http://other.com/page">Link</a>"#
+        )
+    }
+
+    func testBaseURIResolvesRelativeWhitespaceURLInStrictMode() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .strict,
+            baseURI: "http://example.com/",
+            original: #"<a href=" /foo ">Link</a>"#,
+            expected: #"<a href="http://example.com/foo">Link</a>"#
+        )
+    }
+
+    func testBaseURIResolvesRelativeWhitespaceURLInTrimMode() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            baseURI: "http://example.com/",
+            original: #"<a href=" /foo ">Link</a>"#,
+            expected: #"<a href="http://example.com/foo">Link</a>"#
+        )
+    }
+
+    func testBaseURIResolvesRelativeWhitespaceURLInAllowMode() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .allow,
+            baseURI: "http://example.com/",
+            original: #"<a href=" /foo ">Link</a>"#,
+            expected: #"<a href="http://example.com/foo">Link</a>"#
+        )
+    }
+
+    // MARK: - Non-whitelisted protocols
+
+    func testStrictModeRejectsNonWhitelistedProtocol() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .strict,
+            original: #"<a href="javascript:alert(1)">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
+    func testTrimModeRejectsNonWhitelistedProtocol() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<a href="javascript:alert(1)">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
+    func testAllowModeRejectsNonWhitelistedProtocol() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .allow,
+            original: #"<a href="javascript:alert(1)">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
+    func testTrimModeRejectsWhitespacePaddedNonWhitelistedProtocol() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .trim,
+            original: #"<a href=" javascript:alert(1) ">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
+    func testAllowModeRejectsWhitespacePaddedNonWhitelistedProtocol() throws {
+        try assertURLWhitespaceModeBehavior(
+            for: .allow,
+            original: #"<a href=" javascript:alert(1) ">Link</a>"#,
+            expected: #"<a>Link</a>"#
+        )
+    }
+
 }
