@@ -51,11 +51,11 @@ import Foundation
 
     /// Controls how whitespace in URL attributes is handled during sanitization.
     public enum URLWhitespaceMode {
-        /// No trimming; URL attributes with leading/trailing whitespace will have those attributes removed. This is the default.
+        /// No trimming; URL attributes with leading/trailing whitespace will have those attributes removed.
         case strict
         /// Trim whitespace for both validation and output.
         case trim
-        /// Trim whitespace for validation, but preserve original whitespace in output.
+        /// Trim whitespace for validation, but preserve original whitespace in output. This is the default.
         case allow
 
         func prepareForValidation(_ value: [UInt8]) -> [UInt8] {
@@ -192,7 +192,7 @@ import Foundation
         enforcedAttributes = Dictionary<TagName, Dictionary<AttributeKey, AttributeValue>>()
         protocols = Dictionary<TagName, Dictionary<AttributeKey, Set<Protocol>>>()
         preserveRelativeLinks = false
-        urlWhitespaceMode = .strict
+        urlWhitespaceMode = .allow
     }
 
     /**
@@ -411,9 +411,9 @@ import Foundation
     /**
      Configure how whitespace in URL attributes is handled during sanitization.
 
-     - `.strict` (default): No trimming. URL attributes with leading/trailing whitespace will be removed.
+     - `.strict`: No trimming. URL attributes with leading/trailing whitespace will be removed.
      - `.trim`: Trims whitespace for both protocol validation and output.
-     - `.allow`: Trims whitespace for protocol validation but preserves original whitespace in output.
+     - `.allow` (default): Trims whitespace for protocol validation but preserves original whitespace in output.
 
      - parameter mode: The whitespace handling mode
      - returns: this Whitelist, for chaining.
